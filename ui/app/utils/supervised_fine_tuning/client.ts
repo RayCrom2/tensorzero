@@ -1,20 +1,18 @@
 import type { SFTFormValues } from "~/routes/optimization/supervised-fine-tuning/types";
-import { OpenAISFTJob } from "./openai";
-import { FireworksSFTJob } from "./fireworks";
 import { SFTJob, type SFTJobStatus } from "./common";
 import { TensorZeroClient } from "tensorzero-node";
 import type {
   InferenceFilterTreeNode,
   InferenceOutputSource,
-  OptimizerJobHandle,
-  OptimizerStatus,
+  OptimizationJobHandle,
+  OptimizationJobInfo,
   UninitializedOptimizerInfo,
 } from "tensorzero-node";
 import { getConfig } from "~/utils/config/index.server";
 import { getEnv } from "../env.server";
 
 let _tensorZeroClient: TensorZeroClient | undefined;
-async function getTensorZeroClient(): Promise<TensorZeroClient> {
+export async function getNativeTensorZeroClient(): Promise<TensorZeroClient> {
   if (_tensorZeroClient) {
     return _tensorZeroClient;
   }
@@ -28,30 +26,14 @@ async function getTensorZeroClient(): Promise<TensorZeroClient> {
 }
 
 export function launch_sft_job(data: SFTFormValues): Promise<SFTJob> {
-  const useNativeSFT = getEnv().TENSORZERO_UI_FF_USE_NATIVE_SFT === 1;
-  if (useNativeSFT) {
-    return launch_sft_job_native(data);
-  } else {
-    return launch_sft_job_ts(data);
-  }
-}
-
-function launch_sft_job_ts(data: SFTFormValues): Promise<SFTJob> {
-  switch (data.model.provider) {
-    case "openai":
-      return OpenAISFTJob.from_form_data(data);
-    case "fireworks":
-      return FireworksSFTJob.from_form_data(data);
-    default:
-      throw new Error("Invalid provider");
-  }
+  return launch_sft_job_native(data);
 }
 
 class NativeSFTJob extends SFTJob {
-  private jobStatus: OptimizerStatus | "created";
+  private jobStatus: OptimizationJobInfo | "created";
   private provider: "openai" | "fireworks" | "mistral";
   constructor(
-    public jobHandle: OptimizerJobHandle,
+    public jobHandle: OptimizationJobHandle,
     public formData: SFTFormValues,
   ) {
     super();
@@ -62,7 +44,7 @@ class NativeSFTJob extends SFTJob {
   }
 
   static from_job_handle_with_form_data(
-    jobHandle: OptimizerJobHandle,
+    jobHandle: OptimizationJobHandle,
     formData: SFTFormValues,
   ): NativeSFTJob {
     return new NativeSFTJob(jobHandle, formData);
@@ -74,7 +56,7 @@ class NativeSFTJob extends SFTJob {
         status: "idle",
       };
     }
-    switch (this.jobStatus.type) {
+    switch (this.jobStatus.status) {
       case "pending":
         return {
           status: "running",
@@ -123,7 +105,7 @@ class NativeSFTJob extends SFTJob {
   }
 
   async poll(): Promise<SFTJob> {
-    const client = await getTensorZeroClient();
+    const client = await getNativeTensorZeroClient();
     const status = await client.experimentalPollOptimization(this.jobHandle);
     this.jobStatus = status;
     return this;
@@ -140,7 +122,7 @@ async function launch_sft_job_native(data: SFTFormValues): Promise<SFTJob> {
   } else if (data.metric) {
     filters = await createFilters(data.metric, data.threshold);
   }
-  const client = await getTensorZeroClient();
+  const client = await getNativeTensorZeroClient();
   let optimizerConfig: UninitializedOptimizerInfo;
   if (data.model.provider == "openai") {
     optimizerConfig = {
