@@ -1,3 +1,4 @@
+use futures::future::try_join_all;
 use object_store::aws::AmazonS3Builder;
 use object_store::local::LocalFileSystem;
 use object_store::{ObjectStore, PutPayload};
@@ -125,6 +126,13 @@ pub struct GatewayConfig {
     // If set, all of the HTTP endpoints will have this path prepended.
     // E.g. a base path of `/custom/prefix` will cause the inference endpoint to become `/custom/prefix/inference`.
     pub base_path: Option<String>,
+    /// If enabled, adds an 'error_json' field alongside the human-readable 'error' field
+    /// in HTTP error responses. This contains a JSON-serialized version of the error.
+    /// While 'error_json' will always be valid JSON when present, the exact contents is unstable,
+    /// and may change at any time without warning.
+    /// For now, this is only supported in the standalone gateway, and not in the embedded gateway.
+    #[serde(default)]
+    pub unstable_error_json: bool,
 }
 
 fn serialize_optional_socket_addr<S>(
@@ -189,23 +197,30 @@ impl ObjectStoreInfo {
         };
 
         let object_store: Option<Arc<dyn ObjectStore>> = match &config {
-            StorageKind::Filesystem { path } => Some(Arc::new(
-                LocalFileSystem::new_with_prefix(path).map_err(|e| {
-                    if !std::fs::exists(path).unwrap_or(false) {
-                        Error::new(ErrorDetails::Config {
-                            message: format!(
-                                "Failed to create filesystem object store: path does not exist: {path}"
-                            ),
-                        })
-                    } else {
-                        Error::new(ErrorDetails::Config {
-                            message: format!(
-                                "Failed to create filesystem object store for path: {path}: {e}"
-                            ),
-                        })
+            StorageKind::Filesystem { path } => {
+                Some(Arc::new(match LocalFileSystem::new_with_prefix(path) {
+                    Ok(object_store) => object_store,
+                    Err(e) => {
+                        if !std::fs::exists(path).unwrap_or(false) {
+                            if skip_credential_validation() {
+                                tracing::warn!("Filesystem object store path does not exist: {path}. Treating object store as unconfigured");
+                                return Ok(None);
+                            }
+                            return Err(Error::new(ErrorDetails::Config {
+                                message: format!(
+                                    "Failed to create filesystem object store: path does not exist: {path}"
+                                ),
+                            }));
+                        } else {
+                            return Err(Error::new(ErrorDetails::Config {
+                                message: format!(
+                                    "Failed to create filesystem object store for path: {path}: {e}"
+                                ),
+                            }));
+                        }
                     }
-                })?,
-            )),
+                }))
+            }
             StorageKind::S3Compatible {
                 bucket_name,
                 region,
@@ -496,11 +511,15 @@ impl Config {
             .collect::<Result<HashMap<_, _>, _>>()?;
 
         let object_store_info = ObjectStoreInfo::new(uninitialized_config.object_storage)?;
-        let optimizers = uninitialized_config
-            .optimizers
-            .into_iter()
-            .map(|(name, config)| config.load().map(|c| (name, c)))
-            .collect::<Result<HashMap<_, _>, _>>()?;
+        let optimizers = try_join_all(
+            uninitialized_config
+                .optimizers
+                .into_iter()
+                .map(|(name, config)| async { config.load().await.map(|c| (name, c)) }),
+        )
+        .await?
+        .into_iter()
+        .collect::<HashMap<_, _>>();
 
         let mut config = Config {
             gateway: uninitialized_config.gateway,
@@ -1148,7 +1167,7 @@ impl UninitializedToolConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export))]
 pub struct PathWithContents {
