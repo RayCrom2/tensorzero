@@ -55,9 +55,9 @@ use crate::providers::{
     anthropic::AnthropicProvider, aws_bedrock::AWSBedrockProvider, azure::AzureProvider,
     deepseek::DeepSeekProvider, fireworks::FireworksProvider,
     gcp_vertex_anthropic::GCPVertexAnthropicProvider, gcp_vertex_gemini::GCPVertexGeminiProvider,
-    groq::GroqProvider, mistral::MistralProvider, openai::OpenAIProvider,
-    openrouter::OpenRouterProvider, together::TogetherProvider, vllm::VLLMProvider,
-    xai::XAIProvider,
+    groq::GroqProvider, mistral::MistralProvider, nvidia_nim::NvidiaNimProvider,
+    openai::OpenAIProvider, openrouter::OpenRouterProvider, together::TogetherProvider,
+    vllm::VLLMProvider, xai::XAIProvider,
 };
 
 #[derive(Debug, Serialize)]
@@ -689,6 +689,7 @@ impl ModelProvider {
             ProviderConfig::Groq(_) => "groq",
             ProviderConfig::Hyperbolic(_) => "hyperbolic",
             ProviderConfig::Mistral(_) => "mistral",
+            ProviderConfig::NvidiaNim(_) => "nvidia_nim",
             ProviderConfig::OpenAI(_) => "openai",
             ProviderConfig::OpenRouter(_) => "openrouter",
             ProviderConfig::Together(_) => "together",
@@ -717,6 +718,7 @@ impl ModelProvider {
             ProviderConfig::Groq(provider) => Some(provider.model_name()),
             ProviderConfig::Hyperbolic(provider) => Some(provider.model_name()),
             ProviderConfig::Mistral(provider) => Some(provider.model_name()),
+            ProviderConfig::NvidiaNim(provider) => Some(provider.model_name()),
             ProviderConfig::OpenAI(provider) => Some(provider.model_name()),
             ProviderConfig::OpenRouter(provider) => Some(provider.model_name()),
             ProviderConfig::Together(provider) => Some(provider.model_name()),
@@ -772,6 +774,8 @@ pub enum ProviderConfig {
     Groq(GroqProvider),
     Hyperbolic(HyperbolicProvider),
     Mistral(MistralProvider),
+    #[serde(rename = "nvidia_nim")]
+    NvidiaNim(NvidiaNimProvider),
     OpenAI(OpenAIProvider),
     OpenRouter(OpenRouterProvider),
     #[serde(rename = "sglang")]
@@ -937,6 +941,12 @@ pub enum UninitializedProviderConfig {
     },
     Mistral {
         model_name: String,
+        #[cfg_attr(test, ts(type = "string | null"))]
+        api_key_location: Option<CredentialLocation>,
+    },
+    NvidiaNim {
+        model_name: String,
+        api_base: Url,
         #[cfg_attr(test, ts(type = "string | null"))]
         api_key_location: Option<CredentialLocation>,
     },
@@ -1127,6 +1137,15 @@ impl UninitializedProviderConfig {
                 model_name,
                 api_key_location,
             } => ProviderConfig::Mistral(MistralProvider::new(model_name, api_key_location)?),
+            UninitializedProviderConfig::NvidiaNim {
+                model_name,
+                api_base,
+                api_key_location,
+            } => ProviderConfig::NvidiaNim(NvidiaNimProvider::new(
+                model_name,
+                api_base,
+                api_key_location,
+            )?),
             UninitializedProviderConfig::OpenAI {
                 model_name,
                 api_base,
@@ -1234,6 +1253,9 @@ impl ModelProvider {
             ProviderConfig::Mistral(provider) => {
                 provider.infer(request, client, api_keys, self).await
             }
+            ProviderConfig::NvidiaNim(provider) => {
+                provider.infer(request, client, api_keys, self).await
+            }
             ProviderConfig::OpenAI(provider) => {
                 provider.infer(request, client, api_keys, self).await
             }
@@ -1303,6 +1325,9 @@ impl ModelProvider {
                 provider.infer_stream(request, client, api_keys, self).await
             }
             ProviderConfig::Mistral(provider) => {
+                provider.infer_stream(request, client, api_keys, self).await
+            }
+            ProviderConfig::NvidiaNim(provider) => {
                 provider.infer_stream(request, client, api_keys, self).await
             }
             ProviderConfig::OpenAI(provider) => {
@@ -1403,6 +1428,11 @@ impl ModelProvider {
                     .await
             }
             ProviderConfig::Mistral(provider) => {
+                provider
+                    .start_batch_inference(requests, client, api_keys)
+                    .await
+            }
+            ProviderConfig::NvidiaNim(provider) => {
                 provider
                     .start_batch_inference(requests, client, api_keys)
                     .await
@@ -1554,6 +1584,11 @@ impl ModelProvider {
                     .await
             }
             ProviderConfig::DeepSeek(provider) => {
+                provider
+                    .poll_batch_inference(batch_request, http_client, dynamic_api_keys)
+                    .await
+            }
+            ProviderConfig::NvidiaNim(provider) => {
                 provider
                     .poll_batch_inference(batch_request, http_client, dynamic_api_keys)
                     .await

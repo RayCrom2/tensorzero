@@ -1,0 +1,58 @@
+# ┌────────────────────────────────────────┐
+# │         REQUIRED SERVER CONFIG         │
+# └────────────────────────────────────────┘
+[gateway]
+bind_address = "0.0.0.0:3000"
+
+
+
+# A function defines the task we're tackling (e.g. generating a haiku)...
+[functions.generate_haiku]
+type = "chat"
+
+[functions.generate_short_story]
+type = "chat"
+
+# ... and a variant is one of many implementations we can use to tackle it (a choice of prompt, model, etc.).
+# Since we only have one variant for this function, the gateway will always select it.
+
+[functions.generate_haiku.variants.gpt_4o_mini]
+type = "chat_completion"
+model = "openai::gpt-4o-mini"
+
+[functions.generate_short_story.variants."gpt-4o"]
+type = "chat_completion"
+model = "openai::gpt-4o"
+weight = 0.5
+
+
+[functions.generate_short_story.variants.gpt_4o_mini]
+type = "chat_completion"
+model = "openai::gpt-4o-mini"
+weight = 0.7
+
+[functions.generate_short_story.variants.llama_3_1_8b]
+type = "chat_completion"
+model = "llama_model"
+weight = 0.9
+
+[metrics.short_story_rating]
+type = "float"
+optimize = "max"
+level = "inference"
+
+[models.gpt-4o]
+routing = ["openai/gpt-4o"]
+
+[models.gpt-4o.providers."openai/gpt-4o"]
+type = "openai"
+model_name = "gpt-4o"
+
+[models.llama_model]
+routing = ["my_nim_provider"]
+
+[models.llama_model.providers.my_nim_provider]
+type = "openai"
+model_name = "meta/llama-3.1-8b-instruct"
+api_base = "https://integrate.api.nvidia.com/v1"
+api_key_location = "env::NVIDIA_API_KEY"
