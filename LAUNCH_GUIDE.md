@@ -14,9 +14,9 @@ cd "C:\Users\raymo\VScode\tensorzero"
 
 ### 2. Set Environment Variables (Required for local Python client)
 ```powershell
-$env:NVIDIA_API_KEY="nvapi-your-nvidia-api-key-here"
-$env:OPENAI_API_KEY="sk-your-openai-api-key-here"
-$env:TENSORZERO_CLICKHOUSE_URL="https://clickhouse-cloud-url-here"
+$env:NVIDIA_API_KEY="your_nvidia_api_key_here"
+$env:OPENAI_API_KEY="your_openai_api_key_here"
+$env:TENSORZERO_CLICKHOUSE_URL="http://chuser:chpassword@localhost:8123"
 ```
 
 ### 3. Start All Services

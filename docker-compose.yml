@@ -21,15 +21,17 @@ services:
       - ./config:/app/config:ro
     command: --config-file /app/config/tensorzero.toml
     environment:
-      TENSORZERO_CLICKHOUSE_URL: "https://clickhouse-cloud-url-here"
-      OPENAI_API_KEY: "sk-your-openai-api-key-here"
-      NVIDIA_API_KEY: "nvapi-your-nvidia-api-key-here"
+      # These will be inherited from the launch script environment
+      - OPENAI_API_KEY
+      - NVIDIA_API_KEY
+      - TENSORZERO_CLICKHOUSE_URL
     ports:
       - "3000:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - clickhouse
+      clickhouse:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -50,12 +52,13 @@ services:
       # Mount your config directory into the container
       - ./config:/app/config:ro
     environment:
-      TENSORZERO_CLICKHOUSE_URL: "https://clickhouse-cloud-url-here"
       TENSORZERO_GATEWAY_URL: "http://gateway:3000"
+      TENSORZERO_CLICKHOUSE_URL: "${TENSORZERO_CLICKHOUSE_URL}"
     ports:
       - "4000:4000"
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
     healthcheck:
       test:
         [
