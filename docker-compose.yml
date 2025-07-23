@@ -50,7 +50,7 @@ services:
       # Mount your config directory into the container
       - ./config:/app/config:ro
     environment:
-      TENSORZERO_CLICKHOUSE_URL: "https://default:.GTebVcSxvI8h@a73q78qwcz.us-west-2.aws.clickhouse.cloud:8443"
+      TENSORZERO_CLICKHOUSE_URL: "https://clickhouse-cloud-url-here"
       TENSORZERO_GATEWAY_URL: "http://gateway:3000"
     ports:
       - "4000:4000"
